@@ -1,8 +1,14 @@
+# Project output
+fw/projects/*/gcc
+
 # Tags
 tags
 
 # Object files
 *.o
+*.d
+*.axf
+*.bin
 
 # Libraries
 *.lib
