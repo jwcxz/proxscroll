@@ -58,7 +58,7 @@ IPATH+=${ROOT}
 # The default rule, which causes the USB device serial example to be built.
 #
 all: ${COMPILER}
-all: ${COMPILER}/usb_dev_serial.axf
+all: ${COMPILER}/serial.axf
 
 #
 # The rule to clean out all the build products.
@@ -75,16 +75,16 @@ ${COMPILER}:
 #
 # Rules for building the USB device serial example.
 #
-${COMPILER}/usb_dev_serial.axf: ${COMPILER}/startup_${COMPILER}.o
-${COMPILER}/usb_dev_serial.axf: ${COMPILER}/uartstdio.o
-${COMPILER}/usb_dev_serial.axf: ${COMPILER}/usb_dev_serial.o
-${COMPILER}/usb_dev_serial.axf: ${COMPILER}/usb_serial_structs.o
-${COMPILER}/usb_dev_serial.axf: ${COMPILER}/ustdlib.o
-${COMPILER}/usb_dev_serial.axf: ${ROOT}/usblib/${COMPILER}-cm4f/libusb-cm4f.a
-${COMPILER}/usb_dev_serial.axf: ${ROOT}/driverlib/${COMPILER}-cm4f/libdriver-cm4f.a
-${COMPILER}/usb_dev_serial.axf: usb_dev_serial.ld
-SCATTERgcc_usb_dev_serial=usb_dev_serial.ld
-ENTRY_usb_dev_serial=ResetISR
+${COMPILER}/serial.axf: ${COMPILER}/startup_${COMPILER}.o
+${COMPILER}/serial.axf: ${COMPILER}/uartstdio.o
+${COMPILER}/serial.axf: ${COMPILER}/serial.o
+${COMPILER}/serial.axf: ${COMPILER}/usb_serial_structs.o
+${COMPILER}/serial.axf: ${COMPILER}/ustdlib.o
+${COMPILER}/serial.axf: ${ROOT}/usblib/${COMPILER}-cm4f/libusb-cm4f.a
+${COMPILER}/serial.axf: ${ROOT}/driverlib/${COMPILER}-cm4f/libdriver-cm4f.a
+${COMPILER}/serial.axf: serial.ld
+SCATTERgcc_serial=serial.ld
+ENTRY_serial=ResetISR
 CFLAGSgcc=-DTARGET_IS_BLIZZARD_RA2 -DUART_BUFFERED
 
 #
