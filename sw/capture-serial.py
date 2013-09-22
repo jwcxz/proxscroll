@@ -10,11 +10,133 @@ class SampleProcessor:
         buf.append(v);
         if len(buf) > w: buf.pop(0);
         return sum(buf)/float(len(buf));
-        
+
     def process_sample(self, v):
         out = "%d\n" % (voltage);
         sys.stdout.write(out);
         sys.stdout.flush();
+
+
+class LinearSampleProcessor(SampleProcessor):
+    count = 0;
+
+    bsln = { 'buf': [], 'val': 0, 'siz': 200, 'thresh': 200 };
+    avg  = { 'buf': [], 'val': 0, 'siz': 10 };
+    mid  = { 'buf': [], 'val': 0, 'siz': 10, 'thresh': 50, 'decay': 0.01 };
+
+    state = 'SNRT';
+
+    ts = { 'action': "", 'val': 0, 'max': 0 };
+
+    def upd_dict(self, d, v):
+        d['val'] = self.avg_sample(d['buf'], d['siz'], v);
+        return d['val'];
+
+
+    def scroll_gain(self, val):
+        if val < 1500:
+            return int(-(5/1500.)*val + 6);
+        else:
+            return 1
+
+
+    def generate_action(self):
+        # max timestep is a function of the difference
+
+        # when diff is positive, we wish to scroll up
+        # when negative, scroll down
+        diff = self.mid['val'] - self.avg['val'];
+
+        if abs(diff) < self.mid['thresh']:
+            # in noise region -- ignore
+            action = "";
+            tsmax = 0;
+        elif diff > self.mid['thresh']:
+            action = "UP";
+            tsmax = self.scroll_gain(abs(diff));
+        elif diff < self.mid['thresh']:
+            action = "DOWN";
+            tsmax = self.scroll_gain(abs(diff));
+
+
+        if tsmax != self.ts['max'] or action != self.ts['action']:
+            made_changes = True;
+        else:
+            made_changes = False;
+
+
+        if made_changes:
+            # fire new action immediately
+            self.ts['action'] = action;
+            self.ts['max'] = tsmax;
+            self.ts['val'] = 1;
+
+            return self.ts['action'];
+        elif action != "":
+            self.ts['val'] += 1;
+            if self.ts['val'] > self.ts['max']:
+                self.ts['val'] = 0;
+                return self.ts['action'];
+            else:
+                return "";
+        else:
+            return "";
+
+
+    def process_sample(self, v):
+        action = "";
+
+        self.upd_dict(self.avg, v);
+
+        if self.state == "SNRT":
+            if  self.count < self.bsln['siz']:
+                self.upd_dict(self.bsln, v);
+                self.count += 1;
+            else:
+                self.count = 0;
+                self.state = "IDLE";
+
+        elif self.state == "IDLE":
+            if self.avg['val'] > self.bsln['val'] + self.bsln['thresh']:
+                self.count = 0;
+                self.mid['val'] = 0;
+                self.state = "GETS";
+            else:
+                # update baseline
+                self.state = "IDLE";
+
+        elif self.state == "GETS":
+            if self.count < self.mid['siz']:
+                self.upd_dict(self.mid, v)
+                self.count += 1;
+                self.state = "GETS";
+            else:
+                self.count = 0;
+                self.state = "ACTV";
+                self.ts['val'] = 0;
+
+        elif self.state == "ACTV":
+            # once we have determined where the user's hand is placed,
+            # begin processing scroll commands based on upwards or
+            # downwards movements
+
+            if v > self.bsln['val'] + self.bsln['thresh']:
+                if self.count < self.avg['siz']:
+                    # average 10 samples
+                    self.count += 1;
+                else:
+                    action = self.generate_action();
+
+                    self.count = 0;
+                    #del self.mid['buf'][:]
+                    #self.upd_dict(self.mid, v)
+                    #self.mid['val'] = (self.mid['decay'])*v + (1-self.mid['decay'])*self.mid['val'];
+                    self.state = "ACTV";
+            else:
+                # detected reset; go immediately back to idle
+                    self.state = "IDLE";
+
+        print self.state, v,  self.avg['val'], self.mid['val'], action
 
 
 class StepwiseSampleProcessor(SampleProcessor):
@@ -34,17 +156,6 @@ class StepwiseSampleProcessor(SampleProcessor):
     statebase = 0;
     statebase_b = [];
     statebase_w = 10;
-
-
-    def __init__(self):
-        pass;
-
-
-    def avg_sample(self, buf, w, v):
-        buf.append(v);
-        if len(buf) > w: buf.pop(0);
-        return sum(buf)/float(len(buf));
-
 
     def process_sample(self, v):
         action = "";
@@ -116,7 +227,10 @@ class StepwiseSampleProcessor(SampleProcessor):
 
 
 if __name__ == "__main__":
-    processors = { 'simple': SampleProcessor, 'stepwise': StepwiseSampleProcessor };
+    processors = {
+            'simple': SampleProcessor,
+            'stepwise': StepwiseSampleProcessor,
+            'linear': LinearSampleProcessor };
 
 
     p = argparse.ArgumentParser(description='capture data from an ADC');
