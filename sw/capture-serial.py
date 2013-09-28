@@ -12,7 +12,7 @@ class SampleProcessor:
         return sum(buf)/float(len(buf));
 
     def process_sample(self, v):
-        out = "%d\n" % (voltage);
+        out = "%d\n" % (v);
         sys.stdout.write(out);
         sys.stdout.flush();
 
@@ -22,7 +22,7 @@ class LinearSampleProcessor(SampleProcessor):
 
     bsln = { 'buf': [], 'val': 0, 'siz': 200, 'thresh': 200 };
     avg  = { 'buf': [], 'val': 0, 'siz': 10 };
-    mid  = { 'buf': [], 'val': 0, 'siz': 10, 'thresh': 50, 'decay': 0.01 };
+    mid  = { 'buf': [], 'val': 0, 'siz': 10, 'thresh': 400, 'decay': 0.01 };
 
     state = 'SNRT';
 
@@ -106,14 +106,14 @@ class LinearSampleProcessor(SampleProcessor):
                 self.state = "IDLE";
 
         elif self.state == "GETS":
-            if self.count < self.mid['siz']:
+            if self.count > self.mid['siz']:
+                self.count = 0;
+                self.ts['val'] = 0;
+                self.state = "ACTV";
+            else:
                 self.upd_dict(self.mid, v)
                 self.count += 1;
                 self.state = "GETS";
-            else:
-                self.count = 0;
-                self.state = "ACTV";
-                self.ts['val'] = 0;
 
         elif self.state == "ACTV":
             # once we have determined where the user's hand is placed,
@@ -141,6 +141,9 @@ class LinearSampleProcessor(SampleProcessor):
 
 class StepwiseSampleProcessor(SampleProcessor):
     count = 0;
+
+    baselinethresh = 100;
+    statethresh = 100;
 
     baseline = 0;
     alpha_b = 0.1;
@@ -226,6 +229,42 @@ class StepwiseSampleProcessor(SampleProcessor):
         print "    %s" % action;
 
 
+
+class Sampler:
+    # this is cheap, but works so long as we don't get stuck on the wrong 0xAA
+
+    state = "IDLE";
+    buf = [];
+
+    def __init__(self, port, baud):
+        self.cxn = serial.Serial(port, baud);
+
+    def __finish(self):
+        v = (self.buf[0] << 16) | (self.buf[1] <<  8) | (self.buf[2]);
+        del self.buf[:];
+        self.state = "IDLE";
+        return v;
+
+    def get(self):
+        while True:
+            ch = ord(self.cxn.read(1));
+
+            if self.state == "IDLE":
+                if ch == 0xAA:
+                    # got sync, start getting data
+                    del self.buf[:];
+                    self.state = "RECV";
+                else:
+                    self.state = "IDLE";
+
+            elif self.state == "RECV":
+                self.buf.append(ch);
+                if len(self.buf) == 3:
+                    return self.__finish();
+                else:
+                    self.state = "RECV";
+
+
 if __name__ == "__main__":
     processors = {
             'simple': SampleProcessor,
@@ -248,18 +287,9 @@ if __name__ == "__main__":
     args = p.parse_args();
 
     sp = processors[args.algorithm]();
-    cxn = serial.Serial(args.port, args.baud);
 
-    while cxn.read(1) != chr(0xAA): continue;
+    sampler = Sampler(args.port, args.baud);
 
     while True:
-        i = cxn.read(3);
-        c = [ ord(_) for _ in i ];
-
-        voltage = (c[0] << 16) | (c[1] << 8) | (c[2] << 0);
+        voltage = sampler.get();
         sp.process_sample(voltage);
-        #out = "%d\n" % voltage;
-        #sys.stdout.write(out);
-        #sys.stdout.flush();
-
-        while cxn.read(1) != chr(0xAA): pass;
