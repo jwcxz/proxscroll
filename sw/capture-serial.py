@@ -12,7 +12,7 @@ class SampleProcessor:
         return sum(buf)/float(len(buf));
 
     def process_sample(self, v):
-        out = "%d\n" % (v);
+        out = "%d %d %d %d\n" % (v[0], v[1], v[2], v[3]);
         sys.stdout.write(out);
         sys.stdout.flush();
 
@@ -84,6 +84,7 @@ class LinearSampleProcessor(SampleProcessor):
 
 
     def process_sample(self, v):
+        v = v[0];
         action = "";
 
         self.upd_dict(self.avg, v);
@@ -161,6 +162,7 @@ class StepwiseSampleProcessor(SampleProcessor):
     statebase_w = 10;
 
     def process_sample(self, v):
+        v = v[0];
         action = "";
 
         print "%s v:%d bl:%d sb:%d avg:%d sc:%d" %(self.state, v,
@@ -240,10 +242,15 @@ class Sampler:
         self.cxn = serial.Serial(port, baud);
 
     def __finish(self):
-        v = (self.buf[0] << 16) | (self.buf[1] <<  8) | (self.buf[2]);
+        out = [];
+
+        for i in xrange(4):
+            v = (self.buf[i*3 + 0] << 16) | (self.buf[i*3 + 1] <<  8) | (self.buf[i*3 + 2]);
+            out.append(v);
+
         del self.buf[:];
         self.state = "IDLE";
-        return v;
+        return out;
 
     def get(self):
         while True:
@@ -259,7 +266,7 @@ class Sampler:
 
             elif self.state == "RECV":
                 self.buf.append(ch);
-                if len(self.buf) == 3:
+                if len(self.buf) == 3*4:
                     return self.__finish();
                 else:
                     self.state = "RECV";
@@ -291,5 +298,5 @@ if __name__ == "__main__":
     sampler = Sampler(args.port, args.baud);
 
     while True:
-        voltage = sampler.get();
-        sp.process_sample(voltage);
+        data = sampler.get();
+        sp.process_sample(data);

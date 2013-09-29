@@ -36,53 +36,8 @@ volatile unsigned long g_ulSysTickCount = 0;
 static volatile tBoolean g_bUSBConfigured = false;
 
 
-static void CheckForSerialStateChange(const tUSBDCDCDevice *psDevice, long lErrors);
 static tBoolean SetLineCoding(tLineCoding *psLineCoding);
 static void GetLineCoding(tLineCoding *psLineCoding);
-
-static void CheckForSerialStateChange(const tUSBDCDCDevice *psDevice, long lErrors) {
-    unsigned short usSerialState;
-
-    //
-    // Clear our USB serial state.  Since we are faking the handshakes, always
-    // set the TXCARRIER (DSR) and RXCARRIER (DCD) bits.
-    //
-    usSerialState = USB_CDC_SERIAL_STATE_TXCARRIER |
-                    USB_CDC_SERIAL_STATE_RXCARRIER;
-
-    //
-    // Are any error bits set?
-    //
-    if(lErrors)
-    {
-        //
-        // At least one error is being notified so translate from our hardware
-        // error bits into the correct state markers for the USB notification.
-        //
-        if(lErrors & UART_DR_OE)
-        {
-            usSerialState |= USB_CDC_SERIAL_STATE_OVERRUN;
-        }
-
-        if(lErrors & UART_DR_PE)
-        {
-            usSerialState |= USB_CDC_SERIAL_STATE_PARITY;
-        }
-
-        if(lErrors & UART_DR_FE)
-        {
-            usSerialState |= USB_CDC_SERIAL_STATE_FRAMING;
-        }
-
-        if(lErrors & UART_DR_BE)
-        {
-            usSerialState |= USB_CDC_SERIAL_STATE_BREAK;
-        }
-
-        // Call the CDC driver to notify the state change.
-        USBDCDCSerialStateChange((void *)psDevice, usSerialState);
-    }
-}
 
 void SysTickIntHandler(void) {
     //
@@ -507,8 +462,9 @@ unsigned long RxHandler(void *pvCBData, unsigned long ulEvent, unsigned long ulM
 }
 
 int main(void) {
-    unsigned long adc_buffer = 0;
-    unsigned char char_buffer[4];
+    unsigned long adc_buffer[4];
+    unsigned char cb[1 + 3*4];
+    unsigned char i;
 
     //
     // Enable lazy stacking for interrupt handlers.  This allows floating-point
@@ -569,6 +525,7 @@ int main(void) {
     USBDCDCInit(0, (tUSBDCDCDevice *)&g_sCDCDevice);
 
 
+#if 0
     SysCtlPeripheralEnable(SYSCTL_PERIPH_ADC0);
     SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOE);
     GPIOPinTypeADC(GPIO_PORTE_BASE, GPIO_PIN_3);
@@ -579,19 +536,49 @@ int main(void) {
 
     ADCSequenceEnable(ADC0_BASE, 3);
     ADCIntClear(ADC0_BASE, 3);
+#else
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_ADC0);
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOE);
+
+    GPIOPinTypeADC(GPIO_PORTE_BASE, GPIO_PIN_3);
+    GPIOPinTypeADC(GPIO_PORTE_BASE, GPIO_PIN_2);
+    GPIOPinTypeADC(GPIO_PORTE_BASE, GPIO_PIN_1);
+
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOD);
+    GPIOPinTypeADC(GPIO_PORTE_BASE, GPIO_PIN_3);
+
+    ADCSequenceConfigure(ADC0_BASE, 0, ADC_TRIGGER_PROCESSOR, 0);
+
+    ADCSequenceStepConfigure(ADC0_BASE, 0, 0, ADC_CTL_CH0);
+    ADCSequenceStepConfigure(ADC0_BASE, 0, 1, ADC_CTL_CH1);
+    ADCSequenceStepConfigure(ADC0_BASE, 0, 2, ADC_CTL_CH2);
+    ADCSequenceStepConfigure(ADC0_BASE, 0, 3, ADC_CTL_CH4 | ADC_CTL_IE | ADC_CTL_END);
+
+    ADCSequenceEnable(ADC0_BASE, 0);
+    ADCIntClear(ADC0_BASE, 0);
+#endif
 
 
     while(1) {
-        ADCProcessorTrigger(ADC0_BASE, 3);
-        while(!ADCIntStatus(ADC0_BASE, 3, false));
-        ADCSequenceDataGet(ADC0_BASE, 3, &adc_buffer);
+#if 0
+        ADCProcessorTrigger(ADC0_BASE, 0);
+        while(!ADCIntStatus(ADC0_BASE, 0, false));
+        ADCSequenceDataGet(ADC0_BASE, 0, &adc_buffer);
+#else
+        ADCProcessorTrigger(ADC0_BASE, 0);
+        while(!ADCIntStatus(ADC0_BASE, 0, false));
+        ADCSequenceDataGet(ADC0_BASE, 0, adc_buffer);
+#endif
 
-        char_buffer[0] = 0xAA;
-        char_buffer[1] = (adc_buffer >> 16) & 0xFF;
-        char_buffer[2] = (adc_buffer >>  8) & 0xFF;
-        char_buffer[3] = (adc_buffer >>  0) & 0xFF;
+        cb[0] = 0xAA;
 
-        USBBufferWrite((tUSBBuffer *)&g_sTxBuffer, char_buffer, 4);
+        for ( i=0 ; i<4 ; i++ ) {
+            cb[3*i + 1] = (adc_buffer[i] >> 16) & 0xFF;
+            cb[3*i + 2] = (adc_buffer[i] >>  8) & 0xFF;
+            cb[3*i + 3] = (adc_buffer[i] >>  0) & 0xFF;
+        }
+
+        USBBufferWrite((tUSBBuffer *)&g_sTxBuffer, cb, 1 + 3*4);
 
         SysCtlDelay(SysCtlClockGet() / 1000);
     }
