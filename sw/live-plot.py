@@ -64,6 +64,7 @@ class Sampler:
         return out;
 
     def get(self):
+        self.cxn.flush();
         while True:
             ch = ord(self.cxn.read(1));
 
@@ -85,7 +86,7 @@ class Sampler:
 
 class DataGen(object):
     def __init__(self, init=0):
-        self.smp = Sampler('/dev/ttyACM0', 3000000);
+        self.smp = Sampler('/dev/ttyACM1', 3000000);
         self.data = self.smp.get();
         self.init = self.data[:];
 
@@ -172,7 +173,7 @@ class GraphFrame(wx.Frame):
         
         self.redraw_timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, self.on_redraw_timer, self.redraw_timer)        
-        self.redraw_timer.Start(10);
+        self.redraw_timer.Start(60);
 
     def create_menu(self):
         self.menubar = wx.MenuBar()

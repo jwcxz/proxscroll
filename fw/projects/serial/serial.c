@@ -580,6 +580,6 @@ int main(void) {
 
         USBBufferWrite((tUSBBuffer *)&g_sTxBuffer, cb, 1 + 3*4);
 
-        SysCtlDelay(SysCtlClockGet() / 1000);
+        SysCtlDelay(SysCtlClockGet() / 100);
     }
 }
